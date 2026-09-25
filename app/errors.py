@@ -40,6 +40,11 @@ ERROR_OPERATION_FAILED = {
     "capacity_report": "登记失败",
 }
 
+ERROR_CURSOR = {
+    "invalid": "游标无效或已损坏，请从第一页重新开始浏览",
+    "filter_mismatch": "游标与当前筛选条件不一致，筛选条件变化会使游标失效，请从第一页重新开始",
+}
+
 
 def fmt(msg: str, **kwargs) -> str:
     return msg.format(**kwargs)

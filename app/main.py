@@ -3,9 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .database import Base, engine
+from .migrations import run_startup_migrations
 from .routers import entities, parks, projects, workflow, statistics, capacity
 
 Base.metadata.create_all(bind=engine)
+run_startup_migrations(engine)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

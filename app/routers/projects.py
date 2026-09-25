@@ -149,3 +149,24 @@ def get_status_logs(project_id: int, db: Session = Depends(get_db)):
             detail=ERROR_NOT_FOUND["project"],
         )
     return crud.get_project_status_logs(db, project_id=project_id)
+
+
+@router.get(
+    "/{project_id}/status-logs/{log_id}",
+    response_model=schemas.ProjectStatusLog,
+    summary="查询单条项目状态变更日志（时间线审计链接）",
+)
+def get_status_log(project_id: int, log_id: int, db: Session = Depends(get_db)):
+    project = crud.get_project(db, project_id=project_id)
+    if not project:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail=ERROR_NOT_FOUND["project"],
+        )
+    status_log = crud.get_status_log(db, project_id=project_id, log_id=log_id)
+    if not status_log:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail="状态日志不存在",
+        )
+    return status_log

@@ -335,7 +335,11 @@ def update_intent(db: Session, intent_id: int, obj_in: schemas.CooperationIntent
 def create_negotiation(
     db: Session, intent_id: int, obj_in: schemas.NegotiationRecordCreate
 ):
-    db_neg = models.NegotiationRecord(intent_id=intent_id, **obj_in.model_dump())
+    db_neg = models.NegotiationRecord(
+        intent_id=intent_id,
+        recorded_at=datetime.utcnow(),
+        **obj_in.model_dump(),
+    )
     db.add(db_neg)
     intent = db.query(models.CooperationIntent).filter(models.CooperationIntent.id == intent_id).first()
     if intent and intent.status in [IntentStatus.SUBMITTED, IntentStatus.REVIEWING]:
@@ -353,6 +357,35 @@ def list_negotiations(db: Session, intent_id: int):
         .filter(models.NegotiationRecord.intent_id == intent_id)
         .order_by(models.NegotiationRecord.round, models.NegotiationRecord.held_at)
         .all()
+    )
+
+
+def get_status_log(db: Session, project_id: int, log_id: int):
+    return (
+        db.query(models.ProjectStatusLog)
+        .filter(
+            models.ProjectStatusLog.project_id == project_id,
+            models.ProjectStatusLog.id == log_id,
+        )
+        .first()
+    )
+
+
+def get_audit_status_log_for_negotiation(
+    db: Session, project_id: int, held_at: datetime
+):
+    """返回不晚于洽谈发生时间的最近一条项目状态变更日志，作为审计锚点。"""
+    return (
+        db.query(models.ProjectStatusLog)
+        .filter(
+            models.ProjectStatusLog.project_id == project_id,
+            models.ProjectStatusLog.changed_at <= held_at,
+        )
+        .order_by(
+            models.ProjectStatusLog.changed_at.desc(),
+            models.ProjectStatusLog.id.desc(),
+        )
+        .first()
     )
 
 

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
 
+from ..config import settings
 from ..database import get_db
 from .. import crud, schemas
 from ..enums import IntentStatus, ProjectStatus, MilestoneStatus
@@ -10,9 +11,11 @@ from ..errors import (
     ERROR_NOT_FOUND,
     ERROR_DUPLICATE,
     ERROR_STATUS,
+    ERROR_CURSOR,
     ERROR_OPERATION_FAILED,
     fmt,
 )
+from ..services import timeline as timeline_service
 
 router = APIRouter(prefix="/workflow", tags=["业务流转：意向-洽谈-立项-里程碑"])
 
@@ -150,6 +153,108 @@ def list_negotiations(intent_id: int, db: Session = Depends(get_db)):
             detail=ERROR_NOT_FOUND["intent"],
         )
     return crud.list_negotiations(db, intent_id=intent_id)
+
+
+def _build_timeline_items(db, project_id, records) -> List[schemas.NegotiationTimelineItem]:
+    """组装时间线条目，并为每条记录附上项目状态日志审计链接。"""
+    prefix = settings.API_V1_PREFIX
+    items = []
+    for record in records:
+        audit = crud.get_audit_status_log_for_negotiation(
+            db, project_id=project_id, held_at=record.held_at
+        )
+        audit_link = None
+        if audit:
+            audit_link = schemas.TimelineAuditLink(
+                status_log_id=audit.id,
+                from_status=audit.from_status,
+                to_status=audit.to_status,
+                changed_at=audit.changed_at,
+                operator=audit.operator,
+                reason=audit.reason,
+                link=(
+                    f"{prefix}/projects/{project_id}/status-logs/{audit.id}"
+                ),
+            )
+        items.append(
+            schemas.NegotiationTimelineItem(
+                id=record.id,
+                intent_id=record.intent_id,
+                round=record.round,
+                title=record.title,
+                held_at=record.held_at,
+                location=record.location,
+                host=record.host,
+                participants=record.participants,
+                key_topics=record.key_topics,
+                consensus=record.consensus,
+                disagreements=record.disagreements,
+                next_steps=record.next_steps,
+                next_meeting_date=record.next_meeting_date,
+                minutes_author=record.minutes_author,
+                recorded_at=record.recorded_at,
+                created_at=record.created_at,
+                is_late_recorded=timeline_service.is_late_recorded(record),
+                audit_status_log=audit_link,
+            )
+        )
+    return items
+
+
+@router.get(
+    "/projects/{project_id}/negotiation-timeline",
+    response_model=schemas.NegotiationTimelinePage,
+    summary="按业务发生时间游标分页浏览项目洽谈时间线",
+)
+def list_negotiation_timeline(
+    project_id: int,
+    intent_id: Optional[int] = Query(None, description="只看某一合作意向的洽谈记录"),
+    round_no: Optional[int] = Query(None, alias="round", description="按轮次筛选"),
+    late_only: bool = Query(False, description="只看迟到补录的记录"),
+    limit: int = Query(50, ge=1, le=200, description="每页条数，1~200"),
+    cursor: Optional[str] = Query(None, description="上一页返回的 next_cursor，首页不传"),
+    db: Session = Depends(get_db),
+):
+    project = crud.get_project(db, project_id=project_id)
+    if not project:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail=ERROR_NOT_FOUND["project"],
+        )
+    if intent_id is not None:
+        intent = crud.get_intent(db, intent_id=intent_id)
+        if not intent or intent.project_id != project_id:
+            raise HTTPException(
+                status_code=HTTPStatus.NOT_FOUND,
+                detail=ERROR_NOT_FOUND["intent"],
+            )
+    try:
+        records, has_more, next_cursor, _ = timeline_service.list_negotiation_timeline(
+            db,
+            project_id=project_id,
+            intent_id=intent_id,
+            round_no=round_no,
+            late_only=late_only,
+            limit=limit,
+            cursor=cursor,
+        )
+    except timeline_service.FilterMismatchCursorError:
+        raise HTTPException(
+            status_code=HTTPStatus.CONFLICT,
+            detail=ERROR_CURSOR["filter_mismatch"],
+        )
+    except timeline_service.InvalidCursorError:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=ERROR_CURSOR["invalid"],
+        )
+    items = _build_timeline_items(db, project_id, records)
+    return schemas.NegotiationTimelinePage(
+        items=items,
+        next_cursor=next_cursor,
+        has_more=has_more,
+        limit=limit,
+    )
 
 
 @router.post(

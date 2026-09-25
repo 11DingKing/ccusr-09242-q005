@@ -278,9 +278,40 @@ class NegotiationRecordCreate(NegotiationRecordBase):
 class NegotiationRecord(NegotiationRecordBase):
     id: int
     intent_id: int
+    recorded_at: Optional[datetime] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TimelineAuditLink(BaseModel):
+    """洽谈记录对应的项目状态日志审计链接（最近一条不晚于洽谈发生时间的状态变更）。"""
+
+    status_log_id: int
+    from_status: Optional[ProjectStatus] = None
+    to_status: ProjectStatus
+    changed_at: datetime
+    operator: Optional[str] = None
+    reason: Optional[str] = None
+    link: str
+
+
+class NegotiationTimelineItem(NegotiationRecordBase):
+    id: int
+    intent_id: int
+    recorded_at: Optional[datetime] = None
+    created_at: datetime
+    is_late_recorded: bool = False
+    audit_status_log: Optional[TimelineAuditLink] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NegotiationTimelinePage(BaseModel):
+    items: List[NegotiationTimelineItem] = Field(default_factory=list)
+    next_cursor: Optional[str] = None
+    has_more: bool = False
+    limit: int
 
 
 class CooperationIntentBase(BaseModel):

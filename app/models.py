@@ -252,6 +252,9 @@ class NegotiationRecord(Base):
     next_steps = Column(Text)
     next_meeting_date = Column(Date)
     minutes_author = Column(String(64))
+    # 业务发生时间（洽谈实际举行时间）由 held_at 表示；
+    # recorded_at 为录入时间，迟到补录时会晚于 held_at，但时间线一律按 held_at 排序。
+    recorded_at = Column(DateTime, nullable=True, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     intent = relationship("CooperationIntent", back_populates="negotiations")

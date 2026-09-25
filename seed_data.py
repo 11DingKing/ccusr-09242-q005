@@ -660,6 +660,7 @@ def seed_all():
                 round=1,
                 title="中泰椰子项目首轮商务洽谈",
                 held_at=datetime.utcnow() - timedelta(days=30),
+                recorded_at=datetime.utcnow() - timedelta(days=30) + timedelta(hours=3),
                 location="广西凭祥市人民政府会议室",
                 host="凭祥市投资促进局",
                 participants="泰方Somchai一行5人、中方林峰一行6人、招商局2人",
@@ -675,6 +676,7 @@ def seed_all():
                 round=2,
                 title="中泰椰子项目第二轮洽谈（含实地考察）",
                 held_at=datetime.utcnow() - timedelta(days=18),
+                recorded_at=datetime.utcnow() - timedelta(days=18) + timedelta(hours=5),
                 location="凭祥沿边临港产业园现场 + 园区接待中心",
                 host="李建明（园区主任）",
                 participants="泰方Somchai、工程部总监；中方林峰、周建国、园区工程部。",
@@ -691,6 +693,7 @@ def seed_all():
                 round=3,
                 title="中泰椰子项目第三轮：合资协议条款确认",
                 held_at=datetime.utcnow() - timedelta(days=5),
+                recorded_at=datetime.utcnow() - timedelta(days=5) + timedelta(hours=2),
                 location="南宁市沃顿国际大酒店",
                 host="广西投资促进局东盟处",
                 participants="双方法务、财务、税务顾问。",
@@ -704,6 +707,7 @@ def seed_all():
                 round=1,
                 title="果汁对华供应合作首谈",
                 held_at=datetime.utcnow() - timedelta(days=18),
+                recorded_at=datetime.utcnow() - timedelta(days=18) + timedelta(hours=4),
                 location="钦防协作园招商中心",
                 host="黄涛（园区副主任）",
                 participants="暹罗果汁Nitipong、广西农垦周建国、渠道部。",
@@ -714,10 +718,26 @@ def seed_all():
                 next_meeting_date=today - timedelta(days=2),
                 minutes_author="王秘书",
             ),
+            # 迟到补录：洽谈实际发生在 35 天前，会议纪要 1 天前才补录入库，
+            # 时间线仍按 held_at 排在最前，并以 is_late_recorded 标记。
+            models.NegotiationRecord(
+                intent_id=intent_juice_brand_license.id,
+                round=0,
+                title="果汁合作预备会（纪要补录）",
+                held_at=datetime.utcnow() - timedelta(days=35),
+                recorded_at=datetime.utcnow() - timedelta(days=1),
+                location="中国—东盟钦州港片区线上会议",
+                host="黄涛（园区副主任）",
+                participants="暹罗果汁商务代表、广西农垦采购部。",
+                key_topics="初步接触，确认合作意向与后续对接人。",
+                consensus="约定两周后在钦防协作园进行首轮正式洽谈。",
+                next_steps="准备公司资质与产品目录。",
+                minutes_author="王秘书",
+            ),
         ]
         db.add_all(all_negotiations)
         db.flush()
-        print(f"  ✔ 洽谈记录 {len(all_negotiations)} 条（椰子项目3轮、果汁项目1轮）")
+        print(f"  ✔ 洽谈记录 {len(all_negotiations)} 条（椰子项目3轮、果汁项目2轮，含1条迟到补录）")
 
         approval_musang_king = models.ProjectApproval(
             project_id=cn_my_musang_king_project.id,
@@ -824,31 +844,33 @@ def seed_all():
         print(f"  ✔ 里程碑 {len(all_milestones)} 个（猫山王:5 / 火龙果:5 / 菠萝蜜:5）")
 
         status_log_templates = [
-            (cn_my_musang_king_project.id, None, ProjectStatus.ATTRACTING_INVESTMENT, "项目发布，进入招商阶段"),
-            (cn_my_musang_king_project.id, ProjectStatus.ATTRACTING_INVESTMENT, ProjectStatus.NEGOTIATING, "收到合作意向"),
-            (cn_my_musang_king_project.id, ProjectStatus.NEGOTIATING, ProjectStatus.ESTABLISHED, "正式立项，文号NNZMQ-LD-2025-0037"),
-            (cn_my_musang_king_project.id, ProjectStatus.ESTABLISHED, ProjectStatus.UNDER_CONSTRUCTION, "奠基开工里程碑完成"),
-            (vn_dragonfruit_project.id, None, ProjectStatus.ATTRACTING_INVESTMENT, "项目发布"),
-            (vn_dragonfruit_project.id, ProjectStatus.ATTRACTING_INVESTMENT, ProjectStatus.NEGOTIATING, "收到越南合作方意向"),
-            (vn_dragonfruit_project.id, ProjectStatus.NEGOTIATING, ProjectStatus.ESTABLISHED, "东兴边合区正式立项"),
-            (vn_dragonfruit_project.id, ProjectStatus.ESTABLISHED, ProjectStatus.UNDER_CONSTRUCTION, "开工建设"),
-            (id_jackfruit_project.id, None, ProjectStatus.ATTRACTING_INVESTMENT, "发布"),
-            (id_jackfruit_project.id, ProjectStatus.ATTRACTING_INVESTMENT, ProjectStatus.NEGOTIATING, "洽谈"),
-            (id_jackfruit_project.id, ProjectStatus.NEGOTIATING, ProjectStatus.ESTABLISHED, "立项"),
-            (id_jackfruit_project.id, ProjectStatus.ESTABLISHED, ProjectStatus.UNDER_CONSTRUCTION, "开工"),
-            (id_jackfruit_project.id, ProjectStatus.UNDER_CONSTRUCTION, ProjectStatus.COMMISSIONED, "正式投产运营"),
-            (cn_th_coconut_phase1.id, None, ProjectStatus.ATTRACTING_INVESTMENT, "发布"),
-            (cn_th_coconut_phase1.id, ProjectStatus.ATTRACTING_INVESTMENT, ProjectStatus.NEGOTIATING, "北部湾冷链提交意向"),
-            (asean_juice_supply_base.id, None, ProjectStatus.ATTRACTING_INVESTMENT, "发布"),
-            (asean_juice_supply_base.id, ProjectStatus.ATTRACTING_INVESTMENT, ProjectStatus.NEGOTIATING, "广西农垦提交意向"),
-            (gx_nongken_upgrade_project.id, None, ProjectStatus.ATTRACTING_INVESTMENT, "发布"),
-            (gx_huayin_beibuwan_joint_park.id, None, ProjectStatus.ATTRACTING_INVESTMENT, "发布"),
+            # (项目, 原状态, 新状态, 原因, 发生于多少天前)
+            (cn_my_musang_king_project.id, None, ProjectStatus.ATTRACTING_INVESTMENT, "项目发布，进入招商阶段", 120),
+            (cn_my_musang_king_project.id, ProjectStatus.ATTRACTING_INVESTMENT, ProjectStatus.NEGOTIATING, "收到合作意向", 110),
+            (cn_my_musang_king_project.id, ProjectStatus.NEGOTIATING, ProjectStatus.ESTABLISHED, "正式立项，文号NNZMQ-LD-2025-0037", 80),
+            (cn_my_musang_king_project.id, ProjectStatus.ESTABLISHED, ProjectStatus.UNDER_CONSTRUCTION, "奠基开工里程碑完成", 70),
+            (vn_dragonfruit_project.id, None, ProjectStatus.ATTRACTING_INVESTMENT, "项目发布", 100),
+            (vn_dragonfruit_project.id, ProjectStatus.ATTRACTING_INVESTMENT, ProjectStatus.NEGOTIATING, "收到越南合作方意向", 95),
+            (vn_dragonfruit_project.id, ProjectStatus.NEGOTIATING, ProjectStatus.ESTABLISHED, "东兴边合区正式立项", 75),
+            (vn_dragonfruit_project.id, ProjectStatus.ESTABLISHED, ProjectStatus.UNDER_CONSTRUCTION, "开工建设", 70),
+            (id_jackfruit_project.id, None, ProjectStatus.ATTRACTING_INVESTMENT, "发布", 200),
+            (id_jackfruit_project.id, ProjectStatus.ATTRACTING_INVESTMENT, ProjectStatus.NEGOTIATING, "洽谈", 190),
+            (id_jackfruit_project.id, ProjectStatus.NEGOTIATING, ProjectStatus.ESTABLISHED, "立项", 180),
+            (id_jackfruit_project.id, ProjectStatus.ESTABLISHED, ProjectStatus.UNDER_CONSTRUCTION, "开工", 150),
+            (id_jackfruit_project.id, ProjectStatus.UNDER_CONSTRUCTION, ProjectStatus.COMMISSIONED, "正式投产运营", 90),
+            (cn_th_coconut_phase1.id, None, ProjectStatus.ATTRACTING_INVESTMENT, "发布", 40),
+            (cn_th_coconut_phase1.id, ProjectStatus.ATTRACTING_INVESTMENT, ProjectStatus.NEGOTIATING, "北部湾冷链提交意向", 32),
+            (asean_juice_supply_base.id, None, ProjectStatus.ATTRACTING_INVESTMENT, "发布", 45),
+            (asean_juice_supply_base.id, ProjectStatus.ATTRACTING_INVESTMENT, ProjectStatus.NEGOTIATING, "广西农垦提交意向", 33),
+            (gx_nongken_upgrade_project.id, None, ProjectStatus.ATTRACTING_INVESTMENT, "发布", 20),
+            (gx_huayin_beibuwan_joint_park.id, None, ProjectStatus.ATTRACTING_INVESTMENT, "发布", 20),
         ]
         all_status_logs = []
-        for pid, fs, ts, reason in status_log_templates:
+        for pid, fs, ts, reason, days_ago in status_log_templates:
             all_status_logs.append(models.ProjectStatusLog(
                 project_id=pid, from_status=fs, to_status=ts,
                 reason=reason, operator="系统脚本",
+                changed_at=datetime.utcnow() - timedelta(days=days_ago),
             ))
         db.add_all(all_status_logs)
         db.commit()
