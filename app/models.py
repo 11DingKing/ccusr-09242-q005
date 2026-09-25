@@ -231,7 +231,7 @@ class CooperationIntent(Base):
         "NegotiationRecord",
         back_populates="intent",
         cascade="all, delete-orphan",
-        order_by="NegotiationRecord.round, NegotiationRecord.held_at",
+        order_by="NegotiationRecord.round, NegotiationRecord.held_at, NegotiationRecord.id",
     )
 
 
@@ -252,6 +252,9 @@ class NegotiationRecord(Base):
     next_steps = Column(Text)
     next_meeting_date = Column(Date)
     minutes_author = Column(String(64))
+    # 业务发生时间为 held_at；recorded_at 记录实际补录入系统的时间，
+    # 迟到补录（事后补登）时 held_at 可以早于 recorded_at。
+    recorded_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     intent = relationship("CooperationIntent", back_populates="negotiations")

@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_, and_
 from typing import Optional, List
 from datetime import datetime
 
@@ -335,7 +336,12 @@ def update_intent(db: Session, intent_id: int, obj_in: schemas.CooperationIntent
 def create_negotiation(
     db: Session, intent_id: int, obj_in: schemas.NegotiationRecordCreate
 ):
-    db_neg = models.NegotiationRecord(intent_id=intent_id, **obj_in.model_dump())
+    data = obj_in.model_dump()
+    # 缺省以服务器当前时间作为录入时间；迟到补录可显式传入 recorded_at。
+    recorded_at = data.pop("recorded_at", None) or datetime.utcnow()
+    db_neg = models.NegotiationRecord(
+        intent_id=intent_id, recorded_at=recorded_at, **data
+    )
     db.add(db_neg)
     intent = db.query(models.CooperationIntent).filter(models.CooperationIntent.id == intent_id).first()
     if intent and intent.status in [IntentStatus.SUBMITTED, IntentStatus.REVIEWING]:
@@ -351,9 +357,105 @@ def list_negotiations(db: Session, intent_id: int):
     return (
         db.query(models.NegotiationRecord)
         .filter(models.NegotiationRecord.intent_id == intent_id)
-        .order_by(models.NegotiationRecord.round, models.NegotiationRecord.held_at)
+        # id 作为并列决胜，保证轮次/时间相同时顺序仍然稳定。
+        .order_by(
+            models.NegotiationRecord.round,
+            models.NegotiationRecord.held_at,
+            models.NegotiationRecord.id,
+        )
         .all()
     )
+
+
+def list_negotiation_timeline(
+    db: Session,
+    limit: int,
+    project_id: Optional[int] = None,
+    intent_id: Optional[int] = None,
+    cursor_held_at: Optional[datetime] = None,
+    cursor_id: Optional[int] = None,
+):
+    """按业务发生时间做 keyset 游标分页。
+
+    排序键为 ``(held_at DESC, id DESC)``：``held_at`` 是洽谈真实发生时间，
+    同秒记录用稳定标识 ``id`` 决胜。游标条件为严格小于，因此任何相邻页面
+    都不会重复或遗漏记录。
+
+    返回 ``(rows, has_more)``，其中每条 row 为
+    ``(NegotiationRecord, project_id, project_name, project_status)``。
+    """
+    query = (
+        db.query(
+            models.NegotiationRecord,
+            models.CooperationIntent.project_id.label("project_id"),
+            models.Project.name.label("project_name"),
+            models.Project.status.label("project_status"),
+        )
+        .join(
+            models.CooperationIntent,
+            models.NegotiationRecord.intent_id == models.CooperationIntent.id,
+        )
+        .join(
+            models.Project,
+            models.CooperationIntent.project_id == models.Project.id,
+        )
+    )
+    if intent_id is not None:
+        query = query.filter(models.NegotiationRecord.intent_id == intent_id)
+    if project_id is not None:
+        query = query.filter(models.CooperationIntent.project_id == project_id)
+    if cursor_held_at is not None:
+        query = query.filter(
+            or_(
+                models.NegotiationRecord.held_at < cursor_held_at,
+                and_(
+                    models.NegotiationRecord.held_at == cursor_held_at,
+                    models.NegotiationRecord.id < cursor_id,
+                ),
+            )
+        )
+    query = query.order_by(
+        models.NegotiationRecord.held_at.desc(),
+        models.NegotiationRecord.id.desc(),
+    ).limit(limit + 1)
+
+    rows = query.all()
+    has_more = len(rows) > limit
+    return rows[:limit], has_more
+
+
+def get_status_log(db: Session, project_id: int, log_id: int):
+    return (
+        db.query(models.ProjectStatusLog)
+        .filter(
+            models.ProjectStatusLog.project_id == project_id,
+            models.ProjectStatusLog.id == log_id,
+        )
+        .first()
+    )
+
+
+def map_nearest_status_logs(db: Session, project_ids):
+    """取每个项目的状态日志（按 changed_at 倒序）。
+
+    返回 {project_id: [ProjectStatusLog...]}，由调用方按每条洽谈记录的
+    held_at 取第一个 changed_at <= held_at 的日志作为审计锚点。
+    """
+    if not project_ids:
+        return {}
+    logs = (
+        db.query(models.ProjectStatusLog)
+        .filter(models.ProjectStatusLog.project_id.in_(list(project_ids)))
+        .order_by(
+            models.ProjectStatusLog.changed_at.desc(),
+            models.ProjectStatusLog.id.desc(),
+        )
+        .all()
+    )
+    result = {}
+    for log in logs:
+        result.setdefault(log.project_id, []).append(log)
+    return result
 
 
 def approve_project(

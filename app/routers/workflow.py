@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional, List, Union
+from datetime import datetime
 
 from ..database import get_db
 from .. import crud, schemas
@@ -13,6 +14,12 @@ from ..errors import (
     ERROR_OPERATION_FAILED,
     fmt,
 )
+from ..pagination import (
+    CursorError,
+    build_filter_fingerprint,
+    decode_cursor,
+)
+from ..services.timeline import build_negotiation_timeline
 
 router = APIRouter(prefix="/workflow", tags=["业务流转：意向-洽谈-立项-里程碑"])
 
@@ -150,6 +157,65 @@ def list_negotiations(intent_id: int, db: Session = Depends(get_db)):
             detail=ERROR_NOT_FOUND["intent"],
         )
     return crud.list_negotiations(db, intent_id=intent_id)
+
+
+@router.get(
+    "/negotiations/timeline",
+    response_model=Union[
+        List[schemas.NegotiationRecord], schemas.NegotiationTimelinePage
+    ],
+    summary="洽谈时间线：按业务发生时间的稳定游标分页（含状态日志审计链接）",
+)
+def list_negotiation_timeline(
+    project_id: Optional[int] = Query(None, description="按项目筛选洽谈记录"),
+    intent_id: Optional[int] = Query(None, description="按合作意向筛选洽谈记录"),
+    limit: Optional[int] = Query(
+        None,
+        ge=1,
+        le=100,
+        description="每页条数；不传 limit/cursor 时沿用旧版一次性返回裸列表",
+    ),
+    cursor: Optional[str] = Query(None, description="上一页返回的 next_cursor"),
+    db: Session = Depends(get_db),
+):
+    filters = {"project_id": project_id, "intent_id": intent_id}
+    fingerprint = build_filter_fingerprint(filters)
+
+    # 兼容旧调用：不带任何分页参数时仍一次性返回裸列表（按业务发生时间排序）。
+    if limit is None and cursor is None:
+        return [
+            row[0]
+            for row in crud.list_negotiation_timeline(
+                db,
+                limit=100000,
+                project_id=project_id,
+                intent_id=intent_id,
+            )[0]
+        ]
+
+    cursor_held_at = None
+    cursor_id = None
+    if cursor:
+        try:
+            held_at_iso, cursor_id = decode_cursor(cursor, fingerprint)
+            cursor_held_at = datetime.fromisoformat(held_at_iso)
+        except CursorError as exc:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail={"code": exc.code, "message": exc.message},
+            )
+
+    page = build_negotiation_timeline(
+        db,
+        limit=limit or 100,
+        fingerprint=fingerprint,
+        project_id=project_id,
+        intent_id=intent_id,
+        cursor_held_at=cursor_held_at,
+        cursor_id=cursor_id,
+    )
+    # 空页（游标越过全部数据）是正常结果：返回空 items 且不再有下一页。
+    return page
 
 
 @router.post(

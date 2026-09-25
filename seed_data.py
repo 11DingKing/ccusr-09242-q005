@@ -715,6 +715,10 @@ def seed_all():
                 minutes_author="王秘书",
             ),
         ]
+        # 示例洽谈记录视为按时录入：录入时间与业务发生时间一致，
+        # 避免被时间线误判为迟到补录。
+        for neg in all_negotiations:
+            neg.recorded_at = neg.held_at
         db.add_all(all_negotiations)
         db.flush()
         print(f"  ✔ 洽谈记录 {len(all_negotiations)} 条（椰子项目3轮、果汁项目1轮）")

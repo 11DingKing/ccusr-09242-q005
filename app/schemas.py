@@ -269,6 +269,9 @@ class NegotiationRecordBase(BaseModel):
     next_steps: Optional[str] = None
     next_meeting_date: Optional[date] = None
     minutes_author: Optional[str] = None
+    # 补录时间：缺省为当前时间。迟到补录时 held_at 为真实发生时间（可在过去），
+    # recorded_at 反映实际录入系统的时间。
+    recorded_at: Optional[datetime] = None
 
 
 class NegotiationRecordCreate(NegotiationRecordBase):
@@ -278,9 +281,56 @@ class NegotiationRecordCreate(NegotiationRecordBase):
 class NegotiationRecord(NegotiationRecordBase):
     id: int
     intent_id: int
+    # 实际录入（补登）系统的时间；held_at 是洽谈真实发生时间。
+    recorded_at: datetime
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class NegotiationTimelineItem(BaseModel):
+    """时间线条目：在洽谈记录基础上补充迟到补录标记与审计链接。"""
+
+    id: int
+    intent_id: int
+    round: int
+    title: str
+    held_at: datetime
+    recorded_at: datetime
+    is_late: bool = Field(..., description="是否为迟到补录：录入时间晚于业务发生时间")
+    location: Optional[str] = None
+    host: Optional[str] = None
+    participants: Optional[str] = None
+    key_topics: str
+    consensus: Optional[str] = None
+    disagreements: Optional[str] = None
+    next_steps: Optional[str] = None
+    next_meeting_date: Optional[date] = None
+    minutes_author: Optional[str] = None
+    project_id: int
+    project_name: Optional[str] = None
+    project_status: Optional[ProjectStatus] = None
+    # 指向项目状态日志的审计链接
+    project_status_logs_url: str
+    # 业务发生时刻最近的一条项目状态日志（可为空）
+    nearest_status_log: Optional["ProjectStatusLog"] = None
+    nearest_status_log_url: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NegotiationTimelinePage(BaseModel):
+    """游标分页响应。旧调用（不带分页参数）仍返回裸列表，不使用本结构。"""
+
+    items: List[NegotiationTimelineItem]
+    next_cursor: Optional[str] = Field(None, description="下一页游标；为空表示已到末页")
+    has_more: bool
+    limit: int
+    # 审计入口：时间线覆盖项目的状态变更日志链接
+    audit_links: dict = Field(
+        default_factory=dict,
+        description="项目ID -> 状态日志审计链接",
+    )
 
 
 class CooperationIntentBase(BaseModel):
